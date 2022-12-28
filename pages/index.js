@@ -2,10 +2,92 @@ import Head from 'next/head'
 import Image from 'next/image'
 import { Inter } from '@next/font/google'
 import styles from '../styles/Home.module.css'
-
+import { useEffect, useState } from 'react'
+import { csvParse } from 'd3-dsv'
+import {median, mean} from 'd3-array'
 const inter = Inter({ subsets: ['latin'] })
-
+const translations = {
+  '⭐': 1,
+  '⭐⭐': 2,
+  '⭐⭐⭐': 3,
+  '⭐⭐⭐⭐': 4,
+  '⭐⭐⭐⭐⭐': 5,
+  // "didn't read/didn't finish": 0,
+  "Didn't go": 0,
+  'Not a fan': 1,
+  'Okay': 2,
+  'Good': 3,
+  'Loved it!': 4,
+}
 export default function Home() {
+  const [data, setData] = useState(null)
+  const [metadata, setMetadata] = useState(null)
+  useEffect(() => {
+    window.fetch('/bookclubsurvey.csv')
+      .then(res => res.text())
+      .then(text => {
+        const books = new Set()
+        const locations = new Set()
+        const rows = csvParse(text)
+        rows.forEach(row => {
+          const bookRE = /First, let's get some feedback on the books we read this year, on a scale of 1 \(very bad\) to 5 \(excellent\), please rank the following: \[([^\]]+)]/
+          const locationRE = /Location Location Location! By my notes we managed to go to a different location almost every month \(we went to Drakes twice\) What were some of your favorite locations we went to this year for club\? \[([^\]]+)]/
+          Object.keys(row).forEach(key => {
+            if (row[key] in translations) {
+              // console.log('translation found', row[key])
+              row[key] = translations[row[key]]
+            }
+
+            const bookMatch = key.match(bookRE)
+            if (bookMatch) {
+              // console.log('match found')
+              const book = bookMatch[1]
+              row[book] = row[key]
+              books.add(book)
+              delete row[key]
+            }
+            const locationMatch = key.match(locationRE)
+            if (locationMatch) {
+              const location = locationMatch[1]
+              row[location] = row[key]
+              locations.add(location)
+              delete row[key]
+            }
+
+          })
+        })
+        setData(rows)
+        const bookData = Array.from(books).map(book => {
+          return {
+            book,
+            mean: mean(rows, row => row[book]),
+            median: median(rows, row => row[book]),
+          }
+        })
+        const locationData = Array.from(locations).map(location => {
+          return {
+            location,
+            mean: mean(rows, row => row[location]),
+            median: median(rows, row => row[location]),
+          }
+        });
+
+        [bookData, locationData].forEach(dataset => {
+          dataset.sort((a, b) => b.mean - a.mean)
+          dataset.forEach((d, i) => {
+            d.rankMean = i + 1
+          })
+          dataset.sort((a, b) => b.median - a.median)
+          dataset.forEach((d, i) => {
+            d.rankMedian = i + 1
+          })
+        })
+
+        setMetadata({ bookData, locationData })
+      })
+  }, [])
+  console.log(data, metadata)
+
   return (
     <>
       <Head>
@@ -15,108 +97,36 @@ export default function Home() {
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <main className={styles.main}>
-        <div className={styles.description}>
-          <p>
-            Get started by editing&nbsp;
-            <code className={styles.code}>pages/index.js</code>
-          </p>
-          <div>
-            <a
-              href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              By{' '}
-              <Image
-                src="/vercel.svg"
-                alt="Vercel Logo"
-                className={styles.vercelLogo}
-                width={100}
-                height={24}
-                priority
-              />
-            </a>
-          </div>
-        </div>
+        <p className={styles.bold}>The Reading Club 2022 Wrapped!</p>
+        <p>2022 is coming to a close! Are you feeling Lighter yet? Here are some stats from the survey we sent out:</p>
+        <p className={styles.bold}>The Top Books!</p>
+        {
+          metadata ? metadata.bookData.filter(d => d.rankMean <= 5).map((d, i) => {
+            return <p>#{i + 1}: {d.book}</p>
+          }) : null
+        }
+        <p>
+          Two fiction, two non-fiction and one sorta in between!
+        </p>
+        <p className={styles.bold}>
+          The Top Locations!
+        </p>
+        {
+          metadata ? metadata.locationData.filter(d => d.rankMean <= 5).map((d, i) => {
+            return <p>#{i + 1}: {d.location}</p>
+          }) : null
+        }
+        <p>All these are bars with food where you just kinda order your own thing, drink up!</p>
 
-        <div className={styles.center}>
-          <Image
-            className={styles.logo}
-            src="/next.svg"
-            alt="Next.js Logo"
-            width={180}
-            height={37}
-            priority
-          />
-          <div className={styles.thirteen}>
-            <Image
-              src="/thirteen.svg"
-              alt="13"
-              width={40}
-              height={31}
-              priority
-            />
-          </div>
-        </div>
+        <p className={styles.bold}>The Rotten Banana Award</p>
+        <p>The least liked book of the year was "{metadata? metadata.bookData.slice(-1)[0].book : null}", Thanks Obama!</p>
+        {/* <p> enjoyed our gatherings at People's houses and The Avenue</p> */}
 
-        <div className={styles.grid}>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Docs <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Find in-depth information about Next.js features and&nbsp;API.
-            </p>
-          </a>
-
-          <a
-            href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Learn <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Learn about Next.js in an interactive course with&nbsp;quizzes!
-            </p>
-          </a>
-
-          <a
-            href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Templates <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Discover and deploy boilerplate example Next.js&nbsp;projects.
-            </p>
-          </a>
-
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Deploy <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Instantly deploy your Next.js site to a shareable URL
-              with&nbsp;Vercel.
-            </p>
-          </a>
-        </div>
+        <p className={styles.bold}>Looking forward to 2023</p>
+        <p>Greater than 50% of the votes were in favor of switching to trying out a new system of having a different person pick the book each month. There's some concern that that will lead to less participation if people aren't a fan of the genre, so when picking your book, make sure it's something you think others will want to read, and be sure to approach other peoples selections with an open mind. Let's give it a go for at least the first half of the year or until no one wants to be the person choosing!</p>
+        <p>People were also in favor of a show and tell month, one month you can either read on your own or with a friend and then share that book with the group. Let's try this out in the Spring or Summer.</p>
+        <p>#movieclub is now a thing! We didn't discuss too much how we'd want to select movies, so open to options. Nominating and doing ranked choice voting seems like it could be the simplest way, but down for other ideas too. No one was a big fan of separate in person movie only discussions, so can keep the chatter online and in our existing book club meetups.</p>
+        <p>It's been a fun year of reads and hangs and games. Let's do it all again in 2023! There was one suggestion a member had that I don't think we'll be implementing just this year, but keep it in mind for 2023: "should we annually vote 1 member off?"</p>
       </main>
     </>
   )
